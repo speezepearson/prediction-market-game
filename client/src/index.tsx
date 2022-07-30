@@ -4,10 +4,15 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { LocalServer } from "./local_server";
 
+import './index.css';
+
 const ownName = "Alice";
 const conn = new LocalServer(ownName, {
   balances: { Alice: 10, Bob: 10 },
-  phase: "lobby",
+  phase: {
+    t: "lobby",
+    lastRoundWinnings: null,
+  },
 });
 
 const root = ReactDOM.createRoot(

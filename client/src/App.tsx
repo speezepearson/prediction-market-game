@@ -1,13 +1,14 @@
+import { stringify } from "querystring";
 import React from "react";
 import * as LMSR from "./lmsr";
 import { setLMSRProbability } from "./transitions";
 
-import { Unixtime, World, PlayerName, Connection, Round } from "./types";
+import { Unixtime, World, PlayerName, Connection, Round, Lobby } from "./types";
 import { currentTime } from "./util";
 
 type LobbyScreenProps = {
   ownName: PlayerName;
-  world: World & { phase: "lobby" };
+  world: World & { phase: Lobby };
   requestStartRound: () => Promise<void>;
 };
 const LobbyScreen: React.FunctionComponent<LobbyScreenProps> = ({
@@ -24,17 +25,30 @@ const LobbyScreen: React.FunctionComponent<LobbyScreenProps> = ({
   return (
     <div>
       <h1>Lobby</h1>
-      <ul>
-        {Object.entries(world.balances).map(([playerName, balance]) => (
-          <li key={playerName}>
-            <strong>
-              {playerName}
-              {ownName === playerName && " (you)"}:
-            </strong>{" "}
-            ${balance.toFixed(0)}
-          </li>
+      <table className="leaderboard">
+        <thead>
+          <tr>
+            <th>Player</th>
+            <th>Balance</th>
+            <th>Last winnings</th>
+          </tr>
+        </thead>
+        {Object.entries(world.balances).sort(([p1, b1], [p2, b2]) => p1.localeCompare(p2)).map(([playerName, balance]) => (
+          <tr key={playerName}>
+            <td>{playerName} {ownName === playerName && " (you)"}</td>
+            <td>{balance.toFixed(2)}</td>
+            <td>
+              {world.phase.lastRoundWinnings && (() => {
+                const winnings = world.phase.lastRoundWinnings[playerName];
+                if (!winnings) {
+                  return null;
+                }
+                return <strong>({winnings > 0 && '+'}{winnings.toFixed(2)})</strong>
+              })()}
+            </td>
+          </tr>
         ))}
-      </ul>
+      </table>
 
       <p>
         <button
@@ -85,7 +99,9 @@ const CountdownScreen: React.FunctionComponent<CountdownScreenProps> = ({
   world,
 }) => {
   let now = useCurrentTime(0.01);
-  return <h1>Round starts in: {(world.phase.startsAtUnixtime - now).toFixed(0)}</h1>;
+  return (
+    <h1>Round starts in: {(world.phase.startsAtUnixtime - now).toFixed(0)}</h1>
+  );
 };
 
 type RoundScreenProps = {
@@ -101,18 +117,26 @@ const RoundScreen: React.FunctionComponent<RoundScreenProps> = ({
   let round: Round = world.phase;
 
   let now = useCurrentTime(0.01);
-  let [probEntered, setProbEntered] = React.useState(LMSR.getProbability(round.lmsr));
+  let [probEntered, setProbEntered] = React.useState(
+    LMSR.getProbability(round.lmsr)
+  );
   let [probReqsInFlight, incProbReqsInFlight] = React.useReducer<
     React.Reducer<number, number>
   >((x, y) => x + y, 0);
-  const [lastSetProbErr, setLastSetProbErr] = React.useState<null | string>(null);
+  const [lastSetProbErr, setLastSetProbErr] = React.useState<null | string>(
+    null
+  );
+
+  const startingBalance = round.playerStartingBalances[ownName];
 
   return (
     <div>
       <h1>Question: {round.question}</h1>
-      <h2>Time remaining: {(round.endsAtUnixtime - now).toFixed(0)}</h2>
+      <h2>Time remaining: {(round.endsAtUnixtime - now).toFixed(2)}</h2>
       <h2>
-        Your money: ${world.balances[ownName].toFixed(0)} + ?{round.iousHeld[ownName].toFixed(0)}
+        Your money: ${startingBalance.toFixed(2)} + (
+        {(world.balances[ownName] - startingBalance + round.iousHeld[ownName]).toFixed(2)} if Yes,{" "}
+        {(world.balances[ownName] - startingBalance                          ).toFixed(2)} if No)
       </h2>
       <input
         type="range"
@@ -124,27 +148,29 @@ const RoundScreen: React.FunctionComponent<RoundScreenProps> = ({
         onChange={(e) => {
           const oldVal = LMSR.getProbability(round.lmsr);
           let newVal = e.target.valueAsNumber;
-          while (newVal > oldVal + 0.00001) {
+          while (Math.abs(newVal - oldVal) > 0.00001) {
             try {
               setLMSRProbability(world, ownName, newVal);
               break;
             } catch {
-              newVal = (5*newVal + oldVal) / 6;
+              newVal = (5 * newVal + oldVal) / 6;
             }
           }
-          if (newVal < oldVal + 0.00001) {
+          if (Math.abs(newVal - oldVal) <= 0.00001) {
             return;
           }
           console.log("settled on ", newVal);
           incProbReqsInFlight(1);
           setProbEntered(newVal);
           requestSetProbability(newVal)
-            .catch((e) => console.error(e))
+            .catch((e) => setLastSetProbErr(e.message))
             .finally(() => incProbReqsInFlight(-1));
         }}
       />
       {probReqsInFlight > 0 && "Sending..."}
-      {lastSetProbErr && <span style={{ color: "red" }}>Error: {lastSetProbErr}</span>}
+      {lastSetProbErr && (
+        <span style={{ color: "red" }}>Error: {lastSetProbErr}</span>
+      )}
     </div>
   );
 };
@@ -164,24 +190,27 @@ const App: React.FunctionComponent<{
     return <div>Loading...</div>;
   }
 
-  if (world.phase === "lobby") {
-    return (
-      <LobbyScreen
-        ownName={ownName}
-        world={world as World & { phase: "lobby" }}
-        requestStartRound={() => conn.startRound()}
-      />
-    );
-  } else if (world.phase.startsAtUnixtime > now) {
-    return <CountdownScreen world={world as World & { phase: Round }} />;
-  } else {
-    return (
-      <RoundScreen
-        ownName={ownName}
-        world={world as World & { phase: Round }}
-        requestSetProbability={(p) => conn.sendProbability(p)}
-      />
-    );
+  switch (world.phase.t) {
+    case "lobby":
+      return (
+        <LobbyScreen
+          ownName={ownName}
+          world={world as World & { phase: Lobby }}
+          requestStartRound={() => conn.startRound()}
+        />
+      );
+    case "round":
+      if (world.phase.startsAtUnixtime > now) {
+        return <CountdownScreen world={world as World & { phase: Round }} />;
+      } else {
+        return (
+          <RoundScreen
+            ownName={ownName}
+            world={world as World & { phase: Round }}
+            requestSetProbability={(p) => conn.sendProbability(p)}
+          />
+        );
+      }
   }
 };
 

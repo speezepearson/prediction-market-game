@@ -1,10 +1,10 @@
 import { endRound, setLMSRProbability, startRound } from "./transitions";
-import { Connection, Round, World } from "./types";
+import { Connection, Lobby, Round, World } from "./types";
 import { currentTime } from "./util";
 
 const insertNetworkDelay: (f: () => void) => void = (f) => {
-  setTimeout(f, 100 * (1 + 2*Math.random()));
-}
+  setTimeout(f, 100 * (1 + 2 * Math.random()));
+};
 
 export class LocalServer implements Connection {
   ownName: string;
@@ -27,16 +27,16 @@ export class LocalServer implements Connection {
     return new Promise((resolve, reject) => {
       insertNetworkDelay(() => {
         const worldBeforeStart = this.world;
-        if (worldBeforeStart.phase !== "lobby") {
+        if (worldBeforeStart.phase.t !== "lobby") {
           insertNetworkDelay(() => reject("can only start rounds from lobby"));
           return;
         }
         const worldAfterStart = this.setWorld(
-          startRound(worldBeforeStart as World & { phase: "lobby" })
+          startRound(worldBeforeStart as World & { phase: Lobby })
         );
         setTimeout(() => {
           const worldBeforeEnd = this.world;
-          if (worldBeforeEnd.phase === "lobby") {
+          if (worldBeforeEnd.phase.t !== "round") {
             throw new Error("somehow received endRound timeout in lobby");
           }
           this.setWorld(
@@ -52,7 +52,7 @@ export class LocalServer implements Connection {
     return new Promise((resolve, reject) => {
       insertNetworkDelay(() => {
         const w0 = this.world;
-        if (w0.phase === "lobby") {
+        if (w0.phase.t !== "round") {
           insertNetworkDelay(() => reject("can't send probability in lobby"));
           return;
         }
@@ -61,7 +61,7 @@ export class LocalServer implements Connection {
             setLMSRProbability(w0 as World & { phase: Round }, this.ownName, p)
           );
         } catch (e) {
-          console.log('SRP: caught IRL', w0.balances, w0.phase.lmsr, p);
+          console.log("SRP: caught IRL", w0.balances, w0.phase.lmsr, p);
           insertNetworkDelay(() => reject(e));
           return;
         }
