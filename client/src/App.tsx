@@ -33,21 +33,31 @@ const LobbyScreen: React.FunctionComponent<LobbyScreenProps> = ({
             <th>Last winnings</th>
           </tr>
         </thead>
-        {Object.entries(world.balances).sort(([p1, b1], [p2, b2]) => p1.localeCompare(p2)).map(([playerName, balance]) => (
-          <tr key={playerName}>
-            <td>{playerName} {ownName === playerName && " (you)"}</td>
-            <td>{balance.toFixed(2)}</td>
-            <td>
-              {world.phase.lastRoundWinnings && (() => {
-                const winnings = world.phase.lastRoundWinnings[playerName];
-                if (!winnings) {
-                  return null;
-                }
-                return <strong>({winnings > 0 && '+'}{winnings.toFixed(2)})</strong>
-              })()}
-            </td>
-          </tr>
-        ))}
+        {Object.entries(world.balances)
+          .sort(([p1, b1], [p2, b2]) => p1.localeCompare(p2))
+          .map(([playerName, balance]) => (
+            <tr key={playerName}>
+              <td>
+                {playerName} {ownName === playerName && " (you)"}
+              </td>
+              <td>{balance.toFixed(2)}</td>
+              <td>
+                {world.phase.lastRoundWinnings &&
+                  (() => {
+                    const winnings = world.phase.lastRoundWinnings[playerName];
+                    if (!winnings) {
+                      return null;
+                    }
+                    return (
+                      <strong>
+                        ({winnings > 0 && "+"}
+                        {winnings.toFixed(2)})
+                      </strong>
+                    );
+                  })()}
+              </td>
+            </tr>
+          ))}
       </table>
 
       <p>
@@ -104,6 +114,51 @@ const CountdownScreen: React.FunctionComponent<CountdownScreenProps> = ({
   );
 };
 
+type ProbabilitySliderProps = {
+  value: number;
+  onChange: (newValue: number) => void;
+};
+const ProbabilitySlider: React.FunctionComponent<ProbabilitySliderProps> = ({
+  value,
+  onChange,
+}) => {
+  return (
+    <div className="probability-slider">
+      <input
+        type="range"
+        min="0"
+        max="1"
+        step="any"
+        value={value}
+        style={{ width: "80%" }}
+        onChange={(e) => {
+          onChange(e.target.valueAsNumber);
+        }}
+      />
+      <div
+        style={{
+          width: "80%",
+          display: "flex",
+          margin: "auto",
+          justifyContent: "space-between",
+        }}
+      >
+        <div className="tick">0</div>
+        <div className="tick">10</div>
+        <div className="tick">20</div>
+        <div className="tick">30</div>
+        <div className="tick">40</div>
+        <div className="tick">50</div>
+        <div className="tick">60</div>
+        <div className="tick">70</div>
+        <div className="tick">80</div>
+        <div className="tick">90</div>
+        <div className="tick">100</div>
+      </div>
+    </div>
+  );
+};
+
 type RoundScreenProps = {
   ownName: PlayerName;
   world: World & { phase: Round };
@@ -135,19 +190,17 @@ const RoundScreen: React.FunctionComponent<RoundScreenProps> = ({
       <h2>Time remaining: {(round.endsAtUnixtime - now).toFixed(2)}</h2>
       <h2>
         Your money: ${startingBalance.toFixed(2)} + (
-        {(world.balances[ownName] - startingBalance + round.iousHeld[ownName]).toFixed(2)} if Yes,{" "}
-        {(world.balances[ownName] - startingBalance                          ).toFixed(2)} if No)
+        {(
+          world.balances[ownName] -
+          startingBalance +
+          round.iousHeld[ownName]
+        ).toFixed(2)}{" "}
+        if Yes, {(world.balances[ownName] - startingBalance).toFixed(2)} if No)
       </h2>
-      <input
-        type="range"
-        style={{ width: "80%" }}
-        min={0.001}
-        max={0.999}
-        step={"any"}
+      <ProbabilitySlider
         value={probEntered}
-        onChange={(e) => {
+        onChange={(newVal) => {
           const oldVal = LMSR.getProbability(round.lmsr);
-          let newVal = e.target.valueAsNumber;
           while (Math.abs(newVal - oldVal) > 0.00001) {
             try {
               setLMSRProbability(world, ownName, newVal);
@@ -166,7 +219,7 @@ const RoundScreen: React.FunctionComponent<RoundScreenProps> = ({
             .catch((e) => setLastSetProbErr(e.message))
             .finally(() => incProbReqsInFlight(-1));
         }}
-      />
+      ></ProbabilitySlider>
       {probReqsInFlight > 0 && "Sending..."}
       {lastSetProbErr && (
         <span style={{ color: "red" }}>Error: {lastSetProbErr}</span>

@@ -22,7 +22,7 @@ export type World = {
   balances: Record<PlayerName, number>;
   phase: Lobby | Round;
 };
-export type LobbyWorld = World & {phase: Lobby}
+export type LobbyWorld = World & { phase: Lobby };
 
 export interface Connection {
   startRound(): Promise<void>;

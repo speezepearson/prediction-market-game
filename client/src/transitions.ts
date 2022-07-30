@@ -6,7 +6,7 @@ export const startRound: (
   world: World & { phase: Lobby }
 ) => World & { phase: Round } = (world) => {
   const startsAt = currentTime() + 0;
-  const endsAt = startsAt + 10;
+  const endsAt = startsAt + 1000;
   return {
     ...world,
     phase: {
@@ -71,14 +71,19 @@ export const endRound: (
           b + round.iousHeld[p],
         ])
       )
-    : world.balances
+    : world.balances;
 
   return {
     ...world,
     balances: newBalances,
     phase: {
       t: "lobby",
-      lastRoundWinnings: Object.fromEntries(Object.entries(newBalances).map(([p, b]) => [p, b - round.playerStartingBalances[p]]))
+      lastRoundWinnings: Object.fromEntries(
+        Object.entries(newBalances).map(([p, b]) => [
+          p,
+          b - round.playerStartingBalances[p],
+        ])
+      ),
     },
   };
 };

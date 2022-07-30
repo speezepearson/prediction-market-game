@@ -7,3 +7,15 @@
   border: 1px solid #ddd;
   padding: 8px;
 }
+
+.probability-slider input {
+  width: 80%;
+  display: block;
+  margin: auto;
+}
+
+.probability-slider .tick {
+  width: 0;
+  display: flex;
+  justify-content: center;
+}
