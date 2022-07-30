@@ -6,7 +6,7 @@ export const startRound: (
   world: World & { phase: Lobby }
 ) => World & { phase: Round } = (world) => {
   const startsAt = currentTime() + 0;
-  const endsAt = startsAt + 1000;
+  const endsAt = startsAt + 10;
   return {
     ...world,
     phase: {

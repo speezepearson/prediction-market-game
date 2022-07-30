@@ -14,8 +14,21 @@
   margin: auto;
 }
 
+.probability-slider .ticks {
+  width: 80%;
+  height: 2em;
+  margin: auto;
+}
+
+.probability-slider .tick-container {
+  left: 0;
+  height: 0;
+}
+
 .probability-slider .tick {
   width: 0;
+  right: "100%";
+  margin-left: auto;
   display: flex;
   justify-content: center;
 }

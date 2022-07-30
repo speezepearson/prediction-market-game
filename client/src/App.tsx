@@ -10,11 +10,15 @@ type LobbyScreenProps = {
   ownName: PlayerName;
   world: World & { phase: Lobby };
   requestStartRound: () => Promise<void>;
+  viewProbsAs: ViewProbsAs;
+  setViewProbsAs: (v: ViewProbsAs) => void;
 };
 const LobbyScreen: React.FunctionComponent<LobbyScreenProps> = ({
   ownName,
   world,
   requestStartRound,
+  viewProbsAs,
+  setViewProbsAs,
 }) => {
   let [reqStartStatus, setReqStartStatus] = React.useState<
     | { t: "unclicked" }
@@ -33,32 +37,41 @@ const LobbyScreen: React.FunctionComponent<LobbyScreenProps> = ({
             <th>Last winnings</th>
           </tr>
         </thead>
-        {Object.entries(world.balances)
-          .sort(([p1, b1], [p2, b2]) => p1.localeCompare(p2))
-          .map(([playerName, balance]) => (
-            <tr key={playerName}>
-              <td>
-                {playerName} {ownName === playerName && " (you)"}
-              </td>
-              <td>{balance.toFixed(2)}</td>
-              <td>
-                {world.phase.lastRoundWinnings &&
-                  (() => {
-                    const winnings = world.phase.lastRoundWinnings[playerName];
-                    if (!winnings) {
-                      return null;
-                    }
-                    return (
-                      <strong>
-                        ({winnings > 0 && "+"}
-                        {winnings.toFixed(2)})
-                      </strong>
-                    );
-                  })()}
-              </td>
-            </tr>
-          ))}
+        <tbody>
+          {Object.entries(world.balances)
+            .sort(([p1, b1], [p2, b2]) => p1.localeCompare(p2))
+            .map(([playerName, balance]) => (
+              <tr key={playerName}>
+                <td>
+                  {playerName} {ownName === playerName && " (you)"}
+                </td>
+                <td>{balance.toFixed(2)}</td>
+                <td>
+                  {world.phase.lastRoundWinnings &&
+                    (() => {
+                      const winnings = world.phase.lastRoundWinnings[playerName];
+                      if (!winnings) {
+                        return null;
+                      }
+                      return (
+                        <strong>
+                          ({winnings > 0 && "+"}
+                          {winnings.toFixed(2)})
+                        </strong>
+                      );
+                    })()}
+                </td>
+              </tr>
+            ))}
+        </tbody>
       </table>
+
+      <p>
+        View probabilities as: <select onChange={(e) => {setViewProbsAs(e.target.value as ViewProbsAs)}}>
+          <option value={"percentages" as ViewProbsAs}>percentages</option>
+          <option value={"odds" as ViewProbsAs}>odds</option>
+        </select>
+      </p>
 
       <p>
         <button
@@ -115,45 +128,63 @@ const CountdownScreen: React.FunctionComponent<CountdownScreenProps> = ({
 };
 
 type ProbabilitySliderProps = {
-  value: number;
+  prob: number;
+  dbRange: number;
   onChange: (newValue: number) => void;
+  viewProbsAs: ViewProbsAs;
 };
 const ProbabilitySlider: React.FunctionComponent<ProbabilitySliderProps> = ({
-  value,
+  prob,
+  dbRange,
   onChange,
+  viewProbsAs,
 }) => {
+
+  let ticks: {dB: number, text: React.ReactNode}[];
+  switch (viewProbsAs) {
+    case "percentages":
+      ticks = [1, 2, 5, 10, 20, 30,40,  50,60, 70, 80, 90, 95, 98, 99].map((probPct: number) => {
+        const prob = probPct / 100;
+        const dB = 10 * Math.log10(prob / (1-prob));
+        return { dB: dB, text: <>{probPct}<span style={{color:"gray"}}>%</span></> };
+      });
+      break;
+    case "odds":
+      ticks = [1,2,3,5,10,20,30,50,100,200,300,500].flatMap((odds: number) => {
+        const oddsPairs: [number, number][] = (odds === 1) ? [[1, 1]] : [[1, odds], [odds, 1]];
+        return oddsPairs.map(([for_, against]) => {
+          const prob = for_ / (for_ + against);
+          const dB = 10 * Math.log10(prob / (1-prob));
+          return { dB: dB, text: `${for_}:${against}` };
+      })})
+      break;
+  }
+
   return (
     <div className="probability-slider">
       <input
         type="range"
-        min="0"
-        max="1"
+        min={-dbRange}
+        max={dbRange}
         step="any"
-        value={value}
+        value={10 * Math.log10(prob / (1-prob))}
         style={{ width: "80%" }}
         onChange={(e) => {
-          onChange(e.target.valueAsNumber);
+          const dB = e.target.valueAsNumber;
+          console.log('dragged to dB', dB);
+          const odds = Math.pow(10, dB / 10);
+          const prob = odds / (1 + odds);
+          console.log('   equals prob', prob);
+          onChange(prob);
         }}
       />
-      <div
-        style={{
-          width: "80%",
-          display: "flex",
-          margin: "auto",
-          justifyContent: "space-between",
-        }}
-      >
-        <div className="tick">0</div>
-        <div className="tick">10</div>
-        <div className="tick">20</div>
-        <div className="tick">30</div>
-        <div className="tick">40</div>
-        <div className="tick">50</div>
-        <div className="tick">60</div>
-        <div className="tick">70</div>
-        <div className="tick">80</div>
-        <div className="tick">90</div>
-        <div className="tick">100</div>
+      <div className="ticks">
+        {ticks.filter((tick) => tick.dB >= -dbRange-1 && tick.dB <= dbRange+1).map(({dB, text}) => {
+          const widthPct = `${100 * (dB + dbRange)/(2*dbRange)}%`;
+          return<div key={dB.toString()} data-foo={dB.toString()} className="tick-container" style={{ width: widthPct}}>
+              <div className="tick" style={{width: 0, right: "100%"}}>{text}</div>
+            </div>;
+        })}
       </div>
     </div>
   );
@@ -163,11 +194,13 @@ type RoundScreenProps = {
   ownName: PlayerName;
   world: World & { phase: Round };
   requestSetProbability: (p: number) => Promise<void>;
+  viewProbsAs: ViewProbsAs;
 };
 const RoundScreen: React.FunctionComponent<RoundScreenProps> = ({
   ownName,
   world,
   requestSetProbability,
+  viewProbsAs,
 }) => {
   let round: Round = world.phase;
 
@@ -198,7 +231,9 @@ const RoundScreen: React.FunctionComponent<RoundScreenProps> = ({
         if Yes, {(world.balances[ownName] - startingBalance).toFixed(2)} if No)
       </h2>
       <ProbabilitySlider
-        value={probEntered}
+        prob={probEntered}
+        viewProbsAs={viewProbsAs}
+        dbRange={20}
         onChange={(newVal) => {
           const oldVal = LMSR.getProbability(round.lmsr);
           while (Math.abs(newVal - oldVal) > 0.00001) {
@@ -212,7 +247,6 @@ const RoundScreen: React.FunctionComponent<RoundScreenProps> = ({
           if (Math.abs(newVal - oldVal) <= 0.00001) {
             return;
           }
-          console.log("settled on ", newVal);
           incProbReqsInFlight(1);
           setProbEntered(newVal);
           requestSetProbability(newVal)
@@ -228,12 +262,15 @@ const RoundScreen: React.FunctionComponent<RoundScreenProps> = ({
   );
 };
 
+type ViewProbsAs = "percentages" | "odds"
+
 const App: React.FunctionComponent<{
   ownName: string;
   conn: Connection;
 }> = ({ ownName, conn }) => {
   let now = useCurrentTime(0.1);
   let [world, setWorld] = React.useState<World | null>(null);
+  let [viewProbsAs, setViewProbsAs] = React.useState<ViewProbsAs>("percentages")
   React.useEffect(() => {
     const [w0, unhook] = conn.subscribe((w) => setWorld(w));
     setWorld(w0);
@@ -250,6 +287,8 @@ const App: React.FunctionComponent<{
           ownName={ownName}
           world={world as World & { phase: Lobby }}
           requestStartRound={() => conn.startRound()}
+          viewProbsAs={viewProbsAs}
+          setViewProbsAs={setViewProbsAs}
         />
       );
     case "round":
@@ -261,6 +300,7 @@ const App: React.FunctionComponent<{
             ownName={ownName}
             world={world as World & { phase: Round }}
             requestSetProbability={(p) => conn.sendProbability(p)}
+            viewProbsAs={viewProbsAs}
           />
         );
       }
